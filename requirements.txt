@@ -1,0 +1,12 @@
+langchain
+langchain_core
+langchain_ollama
+python-dotenv
+langgraph
+streamlit
+fastapi
+langgraph-checkpoint-sqlite
+langgraph-checkpoint-postgres
+psycopg[binary]
+psycopg-pool
+uvicorn

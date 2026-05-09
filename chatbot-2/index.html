@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LangGraph Chat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── Reset & Variables ───────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #080a0e;
+      --surface:   #0d1117;
+      --border:    #161b27;
+      --border2:   #1f2937;
+      --accent:    #00ff88;
+      --accent2:   #0af;
+      --dim:       #374151;
+      --muted:     #6b7280;
+      --text:      #d1fae5;
+      --text-dim:  #9ca3af;
+      --user-bg:   #0a2f1e;
+      --ai-bg:     #0a1628;
+      --danger:    #ef4444;
+      --glow:      0 0 20px rgba(0,255,136,0.15);
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      overflow: hidden;
+    }
+
+    /* Scanline overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.03) 2px,
+        rgba(0,0,0,0.03) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* ── Layout ──────────────────────────────────────────────────────────── */
+    .shell {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      height: 100vh;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────────── */
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+      overflow: hidden;
+    }
+
+    .sidebar-header {
+      padding: 20px 18px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 17px;
+      color: var(--accent);
+      letter-spacing: -0.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .logo-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .logo-sub {
+      font-size: 9px;
+      color: var(--muted);
+      margin-top: 2px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    /* New thread button */
+    .btn-new {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: calc(100% - 36px);
+      margin: 14px 18px 0;
+      padding: 9px 12px;
+      background: transparent;
+      border: 1px solid var(--accent);
+      border-radius: 4px;
+      color: var(--accent);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .btn-new:hover {
+      background: rgba(0,255,136,0.08);
+      box-shadow: var(--glow);
+    }
+
+    .btn-new svg { flex-shrink: 0; }
+
+    /* Thread list */
+    .threads-label {
+      padding: 16px 18px 6px;
+      font-size: 9px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--dim);
+    }
+
+    .threads-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 10px 10px;
+    }
+
+    .threads-list::-webkit-scrollbar { width: 3px; }
+    .threads-list::-webkit-scrollbar-track { background: transparent; }
+    .threads-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    .thread-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      margin-bottom: 2px;
+      transition: all 0.12s;
+      color: var(--text-dim);
+      font-size: 11px;
+    }
+
+    .thread-item:hover {
+      background: rgba(255,255,255,0.03);
+      border-color: var(--border2);
+      color: var(--text);
+    }
+
+    .thread-item.active {
+      background: rgba(0,255,136,0.06);
+      border-color: rgba(0,255,136,0.25);
+      color: var(--accent);
+    }
+
+    .thread-icon {
+      font-size: 10px;
+      flex-shrink: 0;
+      opacity: 0.6;
+    }
+
+    .thread-id-text { font-size: 11px; }
+
+    .threads-empty {
+      padding: 16px 10px;
+      color: var(--dim);
+      font-size: 11px;
+    }
+
+    /* Status bar */
+    .sidebar-footer {
+      padding: 10px 18px;
+      border-top: 1px solid var(--border);
+      font-size: 10px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 5px var(--accent);
+    }
+
+    /* ── Main chat area ───────────────────────────────────────────────────── */
+    .main {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    /* Topbar */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .topbar-title {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+    }
+
+    .topbar-title span {
+      color: var(--accent2);
+      font-weight: 500;
+    }
+
+    .topbar-badges {
+      display: flex;
+      gap: 8px;
+    }
+
+    .badge {
+      padding: 3px 8px;
+      border-radius: 2px;
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      border: 1px solid;
+    }
+
+    .badge-model { color: var(--accent2); border-color: rgba(0,170,255,0.3); background: rgba(0,170,255,0.05); }
+    .badge-tools { color: #a78bfa; border-color: rgba(167,139,250,0.3); background: rgba(167,139,250,0.05); }
+
+    /* Messages */
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .messages::-webkit-scrollbar { width: 4px; }
+    .messages::-webkit-scrollbar-track { background: transparent; }
+    .messages::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    /* Empty state */
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--dim);
+    }
+
+    .empty-icon {
+      font-size: 36px;
+      opacity: 0.3;
+    }
+
+    .empty-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--border2);
+    }
+
+    .empty-sub {
+      font-size: 11px;
+      color: var(--dim);
+      text-align: center;
+      line-height: 1.8;
+    }
+
+    /* Message bubbles */
+    .msg {
+      display: flex;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      animation: fadein 0.2s ease;
+      max-width: 100%;
+    }
+
+    @keyframes fadein {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .msg.user {
+      background: var(--user-bg);
+      border-color: rgba(0,255,136,0.12);
+      align-self: flex-end;
+      flex-direction: row-reverse;
+      max-width: 85%;
+    }
+
+    .msg.assistant {
+      background: var(--ai-bg);
+      border-color: rgba(0,170,255,0.1);
+      align-self: flex-start;
+      max-width: 85%;
+    }
+
+    .msg-avatar {
+      width: 26px; height: 26px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+
+    .msg.user .msg-avatar {
+      background: rgba(0,255,136,0.12);
+      border: 1px solid rgba(0,255,136,0.2);
+    }
+
+    .msg.assistant .msg-avatar {
+      background: rgba(0,170,255,0.1);
+      border: 1px solid rgba(0,170,255,0.2);
+    }
+
+    .msg-body { flex: 1; min-width: 0; }
+
+    .msg-role {
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+    }
+
+    .msg.user .msg-role { color: var(--accent); text-align: right; }
+    .msg.assistant .msg-role { color: var(--accent2); }
+
+    .msg-content {
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12.5px;
+      color: #e2e8f0;
+    }
+
+    /* Typing indicator */
+    .typing {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      background: var(--ai-bg);
+      border: 1px solid rgba(0,170,255,0.1);
+      border-radius: 6px;
+      align-self: flex-start;
+      animation: fadein 0.2s ease;
+    }
+
+    .typing-label { font-size: 10px; color: var(--muted); letter-spacing: 0.1em; }
+
+    .typing-dots { display: flex; gap: 4px; }
+    .typing-dots span {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--accent2);
+      animation: blink 1.2s ease-in-out infinite;
+    }
+    .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes blink {
+      0%, 80%, 100% { opacity: 0.2; }
+      40% { opacity: 1; }
+    }
+
+    /* ── Input area ──────────────────────────────────────────────────────── */
+    .input-area {
+      padding: 14px 24px 16px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    .input-wrap {
+      flex: 1;
+      position: relative;
+    }
+
+    .input-prefix {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--accent);
+      font-size: 13px;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border2);
+      border-radius: 5px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      padding: 10px 12px 10px 28px;
+      resize: none;
+      outline: none;
+      line-height: 1.6;
+      min-height: 42px;
+      max-height: 120px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    textarea::placeholder { color: var(--dim); }
+
+    textarea:focus {
+      border-color: rgba(0,255,136,0.35);
+      box-shadow: 0 0 0 2px rgba(0,255,136,0.06);
+    }
+
+    .btn-send {
+      width: 42px; height: 42px;
+      background: var(--accent);
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: opacity 0.15s, box-shadow 0.15s, transform 0.1s;
+      color: #000;
+    }
+
+    .btn-send:hover:not(:disabled) {
+      box-shadow: 0 0 16px rgba(0,255,136,0.4);
+      transform: scale(1.05);
+    }
+
+    .btn-send:active:not(:disabled) { transform: scale(0.97); }
+    .btn-send:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .input-hint {
+      margin-top: 7px;
+      font-size: 10px;
+      color: var(--dim);
+      letter-spacing: 0.05em;
+    }
+
+    /* ── No thread selected ───────────────────────────────────────────────── */
+    .no-thread {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      color: var(--dim);
+      padding: 40px;
+      text-align: center;
+    }
+
+    .no-thread-art {
+      font-size: 48px;
+      opacity: 0.15;
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      color: var(--accent);
+      letter-spacing: -3px;
+    }
+
+    .no-thread h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--border2);
+    }
+
+    .no-thread p { font-size: 11px; line-height: 1.8; color: var(--dim); }
+
+    /* ── Error toast ─────────────────────────────────────────────────────── */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #1f0a0a;
+      border: 1px solid var(--danger);
+      color: var(--danger);
+      padding: 10px 16px;
+      border-radius: 5px;
+      font-size: 11px;
+      z-index: 1000;
+      animation: fadein 0.2s ease;
+      max-width: 300px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <div class="logo-dot"></div>
+        LangGraph
+      </div>
+      <div class="logo-sub">Chatbot Interface</div>
+    </div>
+
+    <button class="btn-new" id="btnNew">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      New Thread
+    </button>
+
+    <div class="threads-label">Threads</div>
+    <div class="threads-list" id="threadsList">
+      <div class="threads-empty">Loading threads…</div>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="status-dot"></div>
+      Connected · qwen2.5:7b
+    </div>
+  </aside>
+
+  <!-- ── Main ─────────────────────────────────────────────────────────────── -->
+  <main class="main" id="main">
+
+    <!-- No thread selected -->
+    <div class="no-thread" id="noThread">
+      <div class="no-thread-art">{ }</div>
+      <h2>No thread selected</h2>
+      <p>Create a new thread or pick one<br>from the sidebar to start chatting.</p>
+    </div>
+
+    <!-- Chat view (hidden until thread selected) -->
+    <div id="chatView" style="display:none; flex:1; flex-direction:column; overflow:hidden;">
+      <div class="topbar">
+        <div class="topbar-title">thread / <span id="topbarThreadId">—</span></div>
+        <div class="topbar-badges">
+          <span class="badge badge-model">qwen2.5:7b</span>
+          <span class="badge badge-tools">add · multiply</span>
+        </div>
+      </div>
+
+      <div class="messages" id="messages"></div>
+
+      <div class="input-area">
+        <div class="input-row">
+          <div class="input-wrap">
+            <span class="input-prefix">›</span>
+            <textarea id="msgInput" placeholder="Send a message…" rows="1"></textarea>
+          </div>
+          <button class="btn-send" id="btnSend" disabled>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M14 8L2 2l3 6-3 6 12-6z" fill="currentColor"/>
+            </svg>
+          </button>
+        </div>
+        <div class="input-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for newline</div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  const API = 'http://localhost:8000';
+  let currentThread = null;
+
+  // ── Elements ──────────────────────────────────────────────────────────────
+  const btnNew       = document.getElementById('btnNew');
+  const threadsList  = document.getElementById('threadsList');
+  const noThread     = document.getElementById('noThread');
+  const chatView     = document.getElementById('chatView');
+  const messages     = document.getElementById('messages');
+  const msgInput     = document.getElementById('msgInput');
+  const btnSend      = document.getElementById('btnSend');
+  const topbarId     = document.getElementById('topbarThreadId');
+
+  // ── API helpers ───────────────────────────────────────────────────────────
+  async function apiGet(path) {
+    const r = await fetch(API + path);
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  }
+
+  async function apiPost(path, body) {
+    const r = await fetch(API + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  }
+
+  // ── Toast ─────────────────────────────────────────────────────────────────
+  function showToast(msg) {
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.textContent = '⚠ ' + msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+  }
+
+  // ── Thread list ───────────────────────────────────────────────────────────
+  async function loadThreads() {
+    try {
+      const data = await apiGet('/threads');
+      const threads = data.threads || [];
+      renderThreads(threads);
+    } catch (e) {
+      threadsList.innerHTML = '<div class="threads-empty" style="color:#ef4444">Failed to load</div>';
+    }
+  }
+
+  function renderThreads(threads) {
+    if (!threads.length) {
+      threadsList.innerHTML = '<div class="threads-empty">No threads yet.</div>';
+      return;
+    }
+    threadsList.innerHTML = threads.map(tid => `
+      <div class="thread-item ${tid === currentThread ? 'active' : ''}"
+           data-id="${tid}" onclick="selectThread('${tid}')">
+        <span class="thread-icon">#</span>
+        <span class="thread-id-text">${tid.slice(0, 8)}</span>
+      </div>
+    `).join('');
+  }
+
+  // ── Select thread ─────────────────────────────────────────────────────────
+  async function selectThread(tid) {
+    currentThread = tid;
+    topbarId.textContent = tid.slice(0, 8) + '…';
+    noThread.style.display = 'none';
+    chatView.style.display = 'flex';
+    messages.innerHTML = '';
+    btnSend.disabled = false;
+
+    // refresh sidebar highlight
+    await loadThreads();
+
+    // load history
+    try {
+      const history = await apiGet(`/history/${tid}`);
+      history.forEach(m => appendMessage(m.role, m.content));
+      scrollBottom();
+    } catch (e) {
+      showToast('Could not load history: ' + e.message);
+    }
+  }
+
+  // ── New thread ────────────────────────────────────────────────────────────
+  btnNew.addEventListener('click', async () => {
+    try {
+      const data = await apiPost('/new-thread', {});
+      await loadThreads();
+      await selectThread(data.thread_id);
+    } catch (e) {
+      showToast('Failed to create thread: ' + e.message);
+    }
+  });
+
+  // ── Render messages ───────────────────────────────────────────────────────
+  function appendMessage(role, content) {
+    if (!content) return;
+    const div = document.createElement('div');
+    div.className = `msg ${role}`;
+    const avatar = role === 'user' ? '↑' : '⬡';
+    const label  = role === 'user' ? 'You' : 'Agent';
+    div.innerHTML = `
+      <div class="msg-avatar">${avatar}</div>
+      <div class="msg-body">
+        <div class="msg-role">${label}</div>
+        <div class="msg-content">${escapeHtml(content)}</div>
+      </div>
+    `;
+    messages.appendChild(div);
+  }
+
+  function escapeHtml(str) {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function showTyping() {
+    const div = document.createElement('div');
+    div.className = 'typing';
+    div.id = 'typing';
+    div.innerHTML = `
+      <span class="typing-label">agent</span>
+      <div class="typing-dots">
+        <span></span><span></span><span></span>
+      </div>
+    `;
+    messages.appendChild(div);
+    scrollBottom();
+  }
+
+  function hideTyping() {
+    document.getElementById('typing')?.remove();
+  }
+
+  function scrollBottom() {
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  // ── Send message ──────────────────────────────────────────────────────────
+  async function sendMessage() {
+    const text = msgInput.value.trim();
+    if (!text || !currentThread) return;
+
+    msgInput.value = '';
+    msgInput.style.height = 'auto';
+    btnSend.disabled = true;
+
+    appendMessage('user', text);
+    scrollBottom();
+    showTyping();
+
+    try {
+      const data = await apiPost('/chat', {
+        thread_id: currentThread,
+        message: text,
+      });
+      hideTyping();
+      appendMessage('assistant', data.response);
+      scrollBottom();
+    } catch (e) {
+      hideTyping();
+      showToast('Error: ' + e.message);
+    } finally {
+      btnSend.disabled = false;
+      msgInput.focus();
+    }
+  }
+
+  // ── Input events ──────────────────────────────────────────────────────────
+  msgInput.addEventListener('input', () => {
+    msgInput.style.height = 'auto';
+    msgInput.style.height = Math.min(msgInput.scrollHeight, 120) + 'px';
+  });
+
+  msgInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  btnSend.addEventListener('click', sendMessage);
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  loadThreads();
+</script>
+</body>
+</html>
